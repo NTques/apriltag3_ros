@@ -1,0 +1,440 @@
+apriltag3_ros:
+  # ===========================================================================
+  # 1. Tag families
+  # ===========================================================================
+  families:
+    type: string_array
+    default_value: ["tagStandard41h12"]
+    read_only: true
+    description: >-
+      Tag families to detect. Multiple families can be registered to a single
+      detector. Each entry must be one of the supported families. Upstream
+      recommends tagStandard41h12 for most applications; tag36h11/36h10/25h9/
+      16h5 are legacy AprilTag 2 families and still work but are not the
+      preferred choice for new deployments.
+      Read-only: changing families requires destroying and recreating the
+      detector, which is heavy; restart the node instead.
+    validation:
+      not_empty<>: null
+      unique<>: null
+      subset_of<>:
+        - [
+            "tag36h11",
+            "tag36h10",
+            "tag25h9",
+            "tag16h5",
+            "tagStandard41h12",
+            "tagStandard52h13",
+            "tagCircle21h7",
+            "tagCircle49h12",
+            "tagCustom48h12",
+          ]
+
+  # ===========================================================================
+  # 2. Detector tuning (maps to apriltag_detector_t fields)
+  # ===========================================================================
+  detector:
+    threads:
+      type: int
+      default_value: 1
+      description: "Number of worker threads used by the detector."
+      validation:
+        gt_eq<>: 1
+    decimate:
+      type: double
+      default_value: 2.0
+      description: >-
+        Decimation factor applied before quad detection. Higher values run
+        faster but reduce detection range and pose accuracy. 1.0 disables it.
+      validation:
+        gt_eq<>: 1.0
+    blur:
+      type: double
+      default_value: 0.0
+      description: >-
+        Gaussian blur sigma (in pixels) applied to the segmented image.
+        Non-zero values help with very noisy images.
+      validation:
+        gt_eq<>: 0.0
+    refine_edges:
+      type: bool
+      default_value: true
+      description: >-
+        Snap quad edges to strong gradients. Recommended when decimate > 1.
+        Cheap to compute and improves quad accuracy.
+    sharpening:
+      type: double
+      default_value: 0.25
+      description: >-
+        Decoding sharpening factor. Higher values can help decode small tags
+        but may hurt in difficult lighting.
+      validation:
+        gt_eq<>: 0.0
+    debug:
+      type: bool
+      default_value: false
+      description: >-
+        Dump intermediate debug images to the current working directory.
+        Slow; for development only.
+    hamming:
+      type: int
+      default_value: 2
+      read_only: true
+      description: >-
+        Maximum number of error bits the detector is allowed to correct when
+        registering a family. Values >= 3 use prohibitive memory.
+        Read-only: baked into apriltag_detector_add_family_bits at construction.
+      validation:
+        bounds<>: [0, 3]
+
+    # apriltag_quad_thresh_params
+    qtp:
+      min_cluster_pixels:
+        type: int
+        default_value: 5
+        description: "Reject quad candidates containing fewer pixels than this."
+        validation:
+          gt_eq<>: 1
+      max_nmaxima:
+        type: int
+        default_value: 10
+        description: "Maximum corner candidates considered per quad segmentation."
+        validation:
+          gt_eq<>: 1
+      critical_rad:
+        type: double
+        default_value: 0.1745329
+        description: >-
+          Reject quads whose edge-pair angles are within this radian threshold
+          of 0 or pi. 0 disables the check. Default is ~10 degrees.
+        validation:
+          gt_eq<>: 0.0
+      max_line_fit_mse:
+        type: double
+        default_value: 10.0
+        description: >-
+          Maximum mean-squared error allowed when fitting lines to contours.
+          Smaller values reject more non-quad shapes early.
+        validation:
+          gt_eq<>: 0.0
+      min_white_black_diff:
+        type: int
+        default_value: 5
+        description: >-
+          Minimum brightness difference (in 0..255 pixel values) the white
+          model must exceed the black model by.
+        validation:
+          bounds<>: [0, 255]
+      deglitch:
+        type: bool
+        default_value: false
+        description: "Deglitch the thresholded image. Useful for very noisy inputs."
+
+  # ===========================================================================
+  # 3. Pose estimation
+  # ===========================================================================
+  estimate_pose:
+    type: bool
+    default_value: true
+    description: "Run 6-DoF pose estimation for each detected tag."
+
+  pose_method:
+    type: string
+    default_value: "orthogonal_iteration"
+    description: >-
+      Pose estimation method.
+      - homography: single-shot homography decomposition (fast, less accurate).
+      - orthogonal_iteration: homography init refined with OI (accurate). This
+        is the method provided by libapriltag's apriltag_pose.h.
+      - opencv_ippe_square: OpenCV's solvePnP with SOLVEPNP_IPPE_SQUARE, the
+        planar-square specialization explicitly suggested by the upstream
+        AprilTag README as an alternative to the built-in solver. Requires
+        OpenCV (>= 4.0) at build time.
+    validation:
+      one_of<>:
+        - ["homography", "orthogonal_iteration", "opencv_ippe_square"]
+
+  pose_iterations:
+    type: int
+    default_value: 50
+    description: >-
+      Iterations used by the orthogonal iteration refiner. Ignored when
+      pose_method is homography or opencv_ippe_square.
+    validation:
+      gt_eq<>: 1
+
+  camera:
+    use_camera_info:
+      type: bool
+      default_value: true
+      description: >-
+        If true, intrinsics are taken from the sensor_msgs/CameraInfo topic.
+        If false, the fx/fy/cx/cy parameters below are used.
+    fx:
+      type: double
+      default_value: 0.0
+      description: "Override focal length x (pixels). Used only when use_camera_info is false."
+      validation:
+        gt_eq<>: 0.0
+    fy:
+      type: double
+      default_value: 0.0
+      description: "Override focal length y (pixels). Used only when use_camera_info is false."
+      validation:
+        gt_eq<>: 0.0
+    cx:
+      type: double
+      default_value: 0.0
+      description: "Override principal point x (pixels). Used only when use_camera_info is false."
+      validation:
+        gt_eq<>: 0.0
+    cy:
+      type: double
+      default_value: 0.0
+      description: "Override principal point y (pixels). Used only when use_camera_info is false."
+      validation:
+        gt_eq<>: 0.0
+
+  # ===========================================================================
+  # 4. Per-tag configuration
+  #
+  # tag.default_size is used for any detected ID not present in
+  # tag.sizes_ids. tag.sizes_ids[i] is mapped to tag.sizes_values[i].
+  # Likewise for frames.
+  # ===========================================================================
+  tag:
+    default_size:
+      type: double
+      default_value: 0.08
+      description: >-
+        Default tag size in meters, measured as the distance between detection
+        corners — equivalently, the length of the edge where the white and
+        black borders meet (per the upstream AprilTag README definition).
+        This is NOT the outer dimension of the printed black border.
+      validation:
+        gt<>: 0.0
+    ids:
+      type: int_array
+      default_value: []
+      description: >-
+        Whitelist of tag IDs to publish. Empty array disables filtering and
+        publishes every detected ID.
+      validation:
+        element_bounds<>: [0, 2147483647]
+    sizes_ids:
+      type: int_array
+      default_value: []
+      description: "Tag IDs that have a per-ID size override."
+      validation:
+        unique<>: null
+        element_bounds<>: [0, 2147483647]
+    sizes_values:
+      type: double_array
+      default_value: []
+      description: >-
+        Per-ID size overrides (meters) paired positionally with sizes_ids.
+        Length must equal sizes_ids. Each value uses the same definition as
+        tag.default_size (distance between detection corners, i.e. the edge
+        where the white and black borders meet).
+      validation:
+        element_bounds<>: [0.0, 100.0]
+    frames_ids:
+      type: int_array
+      default_value: []
+      description: "Tag IDs that have a per-ID TF child frame name."
+      validation:
+        unique<>: null
+        element_bounds<>: [0, 2147483647]
+    frames_values:
+      type: string_array
+      default_value: []
+      description: >-
+        Per-ID TF child frame names paired positionally with frames_ids.
+        Length must equal frames_ids.
+
+  # ===========================================================================
+  # 5. ROS I/O
+  # ===========================================================================
+  image_topic:
+    type: string
+    default_value: "image_rect"
+    read_only: true
+    description: "Subscribed rectified mono/color image topic. Read-only (subscription is created once)."
+    validation:
+      not_empty<>: null
+
+  camera_info_topic:
+    type: string
+    default_value: "camera_info"
+    read_only: true
+    description: "Subscribed sensor_msgs/CameraInfo topic. Read-only (subscription is created once)."
+    validation:
+      not_empty<>: null
+
+  image_transport:
+    type: string
+    default_value: "raw"
+    read_only: true
+    description: "image_transport plugin name (e.g. raw, compressed, theora). Read-only."
+    validation:
+      not_empty<>: null
+
+  detections_topic:
+    type: string
+    default_value: "detections"
+    read_only: true
+    description: "Published topic name for tag detection messages. Read-only."
+    validation:
+      not_empty<>: null
+
+  detections_image_topic:
+    type: string
+    default_value: "detections_image"
+    read_only: true
+    description: "Published topic name for the visualization image. Read-only."
+    validation:
+      not_empty<>: null
+
+  publish_detections_image:
+    type: bool
+    default_value: false
+    read_only: true
+    description: >-
+      Render and publish an annotated image of the detections. Read-only —
+      controls whether the publisher is created at startup.
+
+  publish_tf:
+    type: bool
+    default_value: true
+    read_only: true
+    description: >-
+      Broadcast tf2 transforms from camera frame to each tag frame. Read-only —
+      controls whether the broadcaster is created at startup.
+
+  tf:
+    camera_frame:
+      type: string
+      default_value: ""
+      description: >-
+        Parent frame for published tag transforms. Empty string falls back to
+        the image's header.frame_id.
+    tag_frame_prefix:
+      type: string
+      default_value: "tag_"
+      description: >-
+        Default TF child frame prefix; the tag ID is appended (e.g. tag_0).
+        Overridden per-ID by tag.frames_ids/frames_values.
+
+  qos:
+    reliability:
+      type: string
+      default_value: "reliable"
+      read_only: true
+      description: "QoS reliability policy for image and camera_info subscriptions. Read-only."
+      validation:
+        one_of<>:
+          - ["reliable", "best_effort"]
+    history:
+      type: string
+      default_value: "keep_last"
+      read_only: true
+      description: "QoS history policy for image and camera_info subscriptions. Read-only."
+      validation:
+        one_of<>:
+          - ["keep_last", "keep_all"]
+    depth:
+      type: int
+      default_value: 5
+      read_only: true
+      description: "QoS history depth (used when history is keep_last). Read-only."
+      validation:
+        gt_eq<>: 1
+
+  # ===========================================================================
+  # 6. Pose covariance estimation
+  #
+  # Covariance is computed by linearizing the pinhole projection around the
+  # solved pose: cov = (J^T J)^-1 * pixel_sigma^2, where J is the 8x6
+  # Jacobian of the 4 reprojected corners with respect to the 6-DoF pose,
+  # evaluated numerically. The result populates AprilTagDetection.pose.covariance.
+  # ===========================================================================
+  covariance:
+    enable:
+      type: bool
+      default_value: true
+      description: >-
+        Populate AprilTagDetection.pose.covariance via linearized projection
+        Jacobian. When false, the 6x6 covariance is left as zeros.
+    pixel_sigma:
+      type: double
+      default_value: 1.0
+      description: >-
+        Assumed standard deviation of corner localization in pixels. Drives
+        the magnitude of the reported covariance.
+      validation:
+        gt<>: 0.0
+
+  # ===========================================================================
+  # 7. Filtering / post-processing
+  # ===========================================================================
+  filter:
+    min_decision_margin:
+      type: double
+      default_value: 20.0
+      description: >-
+        Drop detections whose decision_margin is below this threshold.
+        Higher = more conservative (fewer false positives).
+      validation:
+        gt_eq<>: 0.0
+    max_hamming:
+      type: int
+      default_value: 2
+      description: >-
+        Drop detections whose corrected bit count exceeds this value.
+        Must not exceed detector.hamming.
+      validation:
+        bounds<>: [0, 3]
+    max_detections_per_frame:
+      type: int
+      default_value: 0
+      description: >-
+        Maximum detections kept per frame after sorting by decision_margin.
+        0 disables the cap.
+      validation:
+        gt_eq<>: 0
+    roi:
+      type: int_array
+      default_value: [0, 0, 0, 0]
+      description: >-
+        Region of interest [x, y, width, height] in pixels. All zeros means
+        the full image is processed. Must be exactly 4 elements.
+      validation:
+        fixed_size<>: 4
+        element_bounds<>: [0, 100000]
+
+  # ===========================================================================
+  # 8. Diagnostics
+  # ===========================================================================
+  diagnostics:
+    enable:
+      type: bool
+      default_value: false
+      read_only: true
+      description: >-
+        Publish diagnostic_msgs/DiagnosticArray via diagnostic_updater.
+        Read-only — controls whether the updater is created at startup.
+    target_fps:
+      type: double
+      default_value: 30.0
+      description: "Expected detection frame rate; used for staleness warnings."
+      validation:
+        gt<>: 0.0
+    log_period_sec:
+      type: double
+      default_value: 5.0
+      read_only: true
+      description: >-
+        Period (seconds) between throttled stats log lines. Read-only — the
+        timer is created once at startup and is not re-created on change.
+      validation:
+        gt<>: 0.0

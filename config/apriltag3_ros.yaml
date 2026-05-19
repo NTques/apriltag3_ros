@@ -1,0 +1,35 @@
+# Example parameter overrides for apriltag3_ros.
+# Only fields you want to override need to be present here; everything else
+# falls back to the defaults defined in src/apriltag3_ros_parameters.yaml.
+apriltag3_ros:
+  ros__parameters:
+    families: ["tagStandard41h12"]
+
+    detector:
+      threads: 2
+      decimate: 2.0
+      refine_edges: true
+
+    estimate_pose: true
+    pose_method: "orthogonal_iteration"   # or: homography, opencv_ippe_square
+
+    tag:
+      default_size: 0.08
+      # Per-ID overrides (paired positionally; lengths must match).
+      # Leave the *_ids / *_values arrays unset to use defaults (empty).
+      # Example:
+      # sizes_ids: [5, 42]
+      # sizes_values: [0.16, 0.05]
+      # frames_ids: [0]
+      # frames_values: ["tag_origin"]
+
+    image_topic: "image_rect"
+    camera_info_topic: "camera_info"
+    image_transport: "raw"
+
+    publish_tf: true
+    publish_detections_image: false
+
+    filter:
+      min_decision_margin: 20.0
+      max_hamming: 2
