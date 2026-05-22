@@ -163,13 +163,30 @@ The `apriltag3_msgs` package defines:
 
 Detections whose pose solver failed are still published in the array; only their TF is skipped. Use `pose_error` and the covariance to gate downstream consumers.
 
-## Build
+## Install & build
+
+Tested on ROS 2 Jazzy. The package depends on a companion message package, [`apriltag3_msgs`](https://github.com/NTques/apriltag3_msgs), so clone both into the same workspace.
 
 ```bash
-colcon build --packages-select apriltag3_ros
+# 1. Clone into your workspace `src/`.
+mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
+git clone https://github.com/NTques/apriltag3_msgs.git
+git clone https://github.com/NTques/apriltag3_ros.git
+
+# 2. Install system / ROS dependencies (apriltag C library, image_transport, ...).
+cd ~/ros2_ws
+rosdep update
+rosdep install --from-paths src --ignore-src -r -y
+
+# 3. Build.
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-up-to apriltag3_ros
+source install/setup.bash
 ```
 
-Dependencies: `rclcpp`, `rclcpp_components`, `sensor_msgs`, `geometry_msgs`, `image_transport`, `image_geometry`, `cv_bridge`, `OpenCV`, `apriltag`, `apriltag3_msgs`, `tf2`, `tf2_ros`, `generate_parameter_library`.
+After this, `ros2 launch apriltag3_ros apriltag_detector.launch.py` should resolve. See [Quick start](#quick-start) for parameters and remaps.
+
+Direct dependencies (handled by `rosdep` above): `rclcpp`, `rclcpp_components`, `sensor_msgs`, `geometry_msgs`, `image_transport`, `image_geometry`, `cv_bridge`, `OpenCV`, `apriltag`, `apriltag3_msgs`, `tf2`, `tf2_ros`, `generate_parameter_library`.
 
 ## License
 

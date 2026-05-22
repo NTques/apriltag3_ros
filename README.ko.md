@@ -163,13 +163,30 @@ apriltag_detector:
 
 자세 추정에 실패한 검출도 배열에는 포함되지만 TF는 발행되지 않습니다. 하위 소비자는 `pose_error`와 공분산을 기준으로 신뢰도 필터링을 거는 것을 권장합니다.
 
-## 빌드
+## 설치 및 빌드
+
+ROS 2 Jazzy에서 테스트했습니다. 메시지 정의는 별도 패키지 [`apriltag3_msgs`](https://github.com/NTques/apriltag3_msgs)에 있으므로 같은 워크스페이스에 함께 클론하세요.
 
 ```bash
-colcon build --packages-select apriltag3_ros
+# 1. 워크스페이스의 src/에 두 저장소 클론.
+mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
+git clone https://github.com/NTques/apriltag3_msgs.git
+git clone https://github.com/NTques/apriltag3_ros.git
+
+# 2. 시스템/ROS 의존성 설치 (apriltag C 라이브러리, image_transport 등).
+cd ~/ros2_ws
+rosdep update
+rosdep install --from-paths src --ignore-src -r -y
+
+# 3. 빌드.
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-up-to apriltag3_ros
+source install/setup.bash
 ```
 
-의존성: `rclcpp`, `rclcpp_components`, `sensor_msgs`, `geometry_msgs`, `image_transport`, `image_geometry`, `cv_bridge`, `OpenCV`, `apriltag`, `apriltag3_msgs`, `tf2`, `tf2_ros`, `generate_parameter_library`.
+이후 `ros2 launch apriltag3_ros apriltag_detector.launch.py`가 동작합니다. 런치 인자와 토픽 리맵은 [빠른 시작](#빠른-시작) 섹션 참고.
+
+직접 의존성(위 `rosdep` 명령으로 자동 해결): `rclcpp`, `rclcpp_components`, `sensor_msgs`, `geometry_msgs`, `image_transport`, `image_geometry`, `cv_bridge`, `OpenCV`, `apriltag`, `apriltag3_msgs`, `tf2`, `tf2_ros`, `generate_parameter_library`.
 
 ## 라이선스
 
