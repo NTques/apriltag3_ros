@@ -3,26 +3,25 @@
 <package format="3">
   <name>apriltag3_ros</name>
   <version>0.0.0</version>
-  <description>Real-time AprilTag 3 detection and 6-DoF pose estimation node for ROS 2, wrapping the AprilRobotics/apriltag library.</description>
-  <maintainer email="ukima1205@gmail.com">antique</maintainer>
-  <license>BSD-2-Clause</license>
+  <description>ROS 2 wrapper for the AprilTag 3 library: tag detection and pose estimation.</description>
+  <maintainer email="ntq0309@mtis21.com">mtis21</maintainer>
+  <license>BSD-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
-  <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
-  <depend>tf2_ros</depend>
-  <depend>tf2_geometry_msgs</depend>
   <depend>image_transport</depend>
+  <depend>image_geometry</depend>
   <depend>cv_bridge</depend>
-  <depend>diagnostic_updater</depend>
+  <depend>libopencv-dev</depend>
   <depend>apriltag</depend>
   <depend>apriltag3_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
   <depend>generate_parameter_library</depend>
-  <depend>libopencv-dev</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

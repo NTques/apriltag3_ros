@@ -1,0 +1,64 @@
+# Example parameters for the apriltag3_ros::AprilTagDetector composable node.
+#
+# Override per-deployment by passing a different YAML to the launch file:
+#   ros2 launch apriltag3_ros apriltag_detector.launch.py \
+#       params_file:=/abs/path/to/your.yaml
+apriltag_detector:
+  ros__parameters:
+    # ── I/O ──────────────────────────────────────────────────────────
+    # `image_topic` is the base topic for image_transport. The matching
+    # camera_info topic is derived as its sibling automatically. Override
+    # via -r remap or change the value here for the deployed camera.
+    image_topic: image_rect
+    image_transport: raw
+
+    # ── Detector tunables (apriltag_detector_t direct fields) ────────
+    nthreads: 2
+    quad_decimate: 2.0       # >1 = faster, may miss small/distant tags
+    quad_sigma: 0.0          # ~0.8 helps on noisy inputs
+    refine_edges: true       # ignored when quad_decimate == 1
+    decode_sharpening: 0.25
+
+    # ── Quad threshold parameters (qtp.*) ────────────────────────────
+    qtp:
+      min_cluster_pixels: 5
+      max_nmaxima: 10
+      critical_rad: 0.17453293        # 10 degrees
+      max_line_fit_mse: 10.0
+      min_white_black_diff: 5
+      deglitch: false                  # only useful on very noisy inputs
+
+    # ── Family / Hamming / quality filter ────────────────────────────
+    max_hamming: 0                     # 0..2 (library hard limit is 2)
+    decision_margin_min: 30.0          # drop low-confidence decodes
+
+    # ── Pose estimation ──────────────────────────────────────────────
+    # orthogonal_iteration | homography | ippe_square | iterative
+    pose_method: orthogonal_iteration
+
+    # ── TF broadcasting ──────────────────────────────────────────────
+    publish_tf: true
+    tag_frame_prefix: "tag_"           # default; groups may override
+
+    # ── Tag groups ───────────────────────────────────────────────────
+    # Each name in `tag_groups` must have a matching nested block below
+    # with {family, id_begin, id_end, size}. Optional `tag_frame_prefix`
+    # overrides the global default for that group. Tags outside any
+    # declared group are dropped.
+    tag_groups: ["primary"]
+
+    primary:
+      family: tag36h11
+      id_begin: 0
+      id_end: 99
+      size: 0.10                       # 10 cm side length
+      # tag_frame_prefix: "tag_"       # optional per-group override
+
+    # Example second group — uncomment and add 'secondary' to tag_groups
+    # to publish a second family under its own frame prefix.
+    # secondary:
+    #   family: tag25h9
+    #   id_begin: 100
+    #   id_end: 149
+    #   size: 0.05
+    #   tag_frame_prefix: "dock_"      # child frame becomes dock_<id>

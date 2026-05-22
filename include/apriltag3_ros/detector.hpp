@@ -1,84 +1,96 @@
-#pragma once
+#ifndef APRILTAG3_ROS__DETECTOR_HPP_
+#define APRILTAG3_ROS__DETECTOR_HPP_
 
-#include <memory>
+#include <array>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include <opencv2/core.hpp>
+#include <sensor_msgs/msg/camera_info.hpp>
+#include <sensor_msgs/msg/image.hpp>
 
+#include "apriltag3_ros/apriltag_detector_parameters.hpp"
+
+// Forward declarations from the apriltag C library: keep this header
+// independent of <apriltag/apriltag.h>.
 extern "C" {
-#include <apriltag.h>
+typedef struct apriltag_detector apriltag_detector_t;
+typedef struct apriltag_family apriltag_family_t;
 }
 
 namespace apriltag3_ros
 {
 
+struct Pose
+{
+  std::array<double, 9> R{};
+  std::array<double, 3> t{};
+
+  // 6x6 row-major covariance in ROS PoseWithCovariance ordering
+  // [x, y, z, rx, ry, rz]. Linearized from the corner-reprojection
+  // Jacobian (J^T J)^-1 scaled by residual-based sigma^2 with a small
+  // noise floor to avoid overconfidence.
+  std::array<double, 36> covariance{};
+
+  // Method-dependent error metric.
+  //   ippe_square / iterative : RMS reprojection error (pixels)
+  //   orthogonal_iteration    : object-space error (apriltag units)
+  //   homography              : 0 (estimator returns no error)
+  double err = 0.0;
+};
+
+struct Detection
+{
+  std::string group;
+  std::string family;
+  int id;
+  int hamming;
+  float decision_margin;
+  std::array<double, 2> center;
+  std::array<std::array<double, 2>, 4> corners;
+  double size;
+
+  // Resolved per-group TF child-frame prefix (group override or global default).
+  std::string tag_frame_prefix;
+
+  std::optional<Pose> pose;
+};
+
 class Detector
 {
 public:
-  struct Params
-  {
-    int threads{1};
-    double decimate{2.0};
-    double blur{0.0};
-    bool refine_edges{true};
-    double sharpening{0.25};
-    bool debug{false};
-    int hamming{2};
-
-    int qtp_min_cluster_pixels{5};
-    int qtp_max_nmaxima{10};
-    double qtp_critical_rad{0.1745329};
-    double qtp_max_line_fit_mse{10.0};
-    int qtp_min_white_black_diff{5};
-    bool qtp_deglitch{false};
-  };
-
-  // RAII wrapper around the zarray<apriltag_detection_t*> returned by detect.
-  class Detections
-  {
-public:
-    explicit Detections(zarray_t * z) noexcept;
-    ~Detections();
-    Detections(const Detections &) = delete;
-    Detections & operator=(const Detections &) = delete;
-    Detections(Detections && other) noexcept;
-    Detections & operator=(Detections && other) noexcept;
-
-    size_t size() const noexcept;
-    const apriltag_detection_t * operator[](size_t i) const;
-
-private:
-    zarray_t * z_;
-  };
-
-  Detector(const std::vector<std::string> & families, const Params & params);
+  explicit Detector(const apriltag3_ros::Params & params);
   ~Detector();
 
   Detector(const Detector &) = delete;
   Detector & operator=(const Detector &) = delete;
 
-  // Returns names of family factories that are supported by this build.
-  static std::vector<std::string> supported_families();
-
-  // Run detection on an 8-bit single-channel image. The cv::Mat must outlive
-  // the returned Detections object (no data is copied).
-  Detections detect(const cv::Mat & gray);
-
-  // Apply dynamic tuning fields (everything except threads/hamming/families
-  // which require detector reconstruction). Safe to call between frames.
-  void apply_dynamic_params(const Params & params);
+  std::vector<Detection> detect(
+    const sensor_msgs::msg::Image::ConstSharedPtr & image,
+    const sensor_msgs::msg::CameraInfo::ConstSharedPtr & camera_info);
 
 private:
-  apriltag_detector_t * td_{nullptr};
-
-  struct FamilyEntry
+  struct Group
   {
     std::string name;
-    apriltag_family_t * family;
-    void (* destroy)(apriltag_family_t *);
+    std::string family;
+    int id_begin;
+    int id_end;
+    double size;
+    std::string tag_frame_prefix;
   };
-  std::vector<FamilyEntry> families_;
+
+  const Group * findGroup(const std::string & family, int id) const;
+
+  apriltag_detector_t * td_;
+  std::vector<std::pair<std::string, apriltag_family_t *>> families_;
+  std::vector<Group> groups_;
+
+  std::string pose_method_;
+  double decision_margin_min_;
 };
 
 }  // namespace apriltag3_ros
+
+#endif  // APRILTAG3_ROS__DETECTOR_HPP_

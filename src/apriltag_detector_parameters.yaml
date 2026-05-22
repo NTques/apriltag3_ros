@@ -1,0 +1,221 @@
+apriltag3_ros:
+  # ── I/O ──────────────────────────────────────────────────────────────
+  # Input is assumed to be a rectified image (e.g. image_proc/rectify_node
+  # output). The companion camera_info topic is derived automatically by
+  # image_transport::CameraSubscriber as the sibling of `image_topic`
+  # (`<base>/../camera_info`), so it has no separate parameter.
+  image_topic:
+    type: string
+    default_value: "image_rect"
+    description: "Input rectified image topic (base name for image_transport)."
+    read_only: true
+    validation:
+      not_empty<>: null
+
+  image_transport:
+    type: string
+    default_value: "raw"
+    description: >
+      Transport plugin name passed to image_transport (raw, compressed,
+      theora, ...). Read at startup by TransportHints; runtime changes
+      are not applied.
+    read_only: true
+    validation:
+      not_empty<>: null
+
+  # ── Detector tunables (apriltag_detector_t direct fields) ────────────
+  nthreads:
+    type: int
+    default_value: 1
+    description: "Number of worker threads used by the detector."
+    validation:
+      gt_eq<>: 1
+
+  quad_decimate:
+    type: double
+    default_value: 2.0
+    description: >
+      Decimate input image by this factor before quad detection. Higher =
+      faster but may miss small/distant tags. Decoding still uses full
+      resolution.
+    validation:
+      gt_eq<>: 1.0
+
+  quad_sigma:
+    type: double
+    default_value: 0.0
+    description: >
+      Gaussian blur sigma (px) applied to the segmentation image. ~0.8
+      helps on noisy inputs.
+
+  refine_edges:
+    type: bool
+    default_value: true
+    description: >
+      Snap quad edges to strong gradients. Ignored when quad_decimate == 1.
+
+  decode_sharpening:
+    type: double
+    default_value: 0.25
+    description: "Sharpening applied to the decoded image. Helps small tags."
+
+  # ── Quad threshold parameters (apriltag_detector_t::qtp) ─────────────
+  qtp:
+    min_cluster_pixels:
+      type: int
+      default_value: 5
+      description: "Reject quads with fewer than this many pixels."
+      validation:
+        gt_eq<>: 1
+
+    max_nmaxima:
+      type: int
+      default_value: 10
+      description: "Max corner candidates per pixel cluster."
+      validation:
+        gt_eq<>: 1
+
+    critical_rad:
+      type: double
+      default_value: 0.17453293
+      description: >
+        Reject edge pairs whose angle is within this (radians) of straight
+        or 180°. 0 disables the check. Default is 10°.
+      validation:
+        gt_eq<>: 0.0
+
+    max_line_fit_mse:
+      type: double
+      default_value: 10.0
+      description: "Max MSE allowed when fitting lines to contours."
+      validation:
+        gt_eq<>: 0.0
+
+    min_white_black_diff:
+      type: int
+      default_value: 5
+      description: "Minimum white-vs-black brightness gap (0-255)."
+      validation:
+        bounds<>: [0, 255]
+
+    deglitch:
+      type: bool
+      default_value: false
+      description: >
+        Deglitch the thresholded image. Useful only on very noisy inputs;
+        slows detection.
+
+  # ── Family / max hamming ─────────────────────────────────────────────
+  max_hamming:
+    type: int
+    default_value: 0
+    description: >
+      Maximum Hamming error bits corrected during decode. Library hard
+      limit is 2 (apriltag.h); larger values explode memory and false
+      positive rates.
+    validation:
+      bounds<>: [0, 2]
+
+  # ── Tag groups ───────────────────────────────────────────────────────
+  # Each group declares a family and a contiguous tag-ID range that
+  # share a common physical size. Activate a group by listing its name
+  # in `tag_groups` and configuring <group>.{family,id_begin,id_end,size}.
+  tag_groups:
+    type: string_array
+    default_value: []
+    description: >
+      Names of the tag groups in use. For each name <g> listed here,
+      configure <g>.family, <g>.id_begin, <g>.id_end, <g>.size.
+    read_only: true
+
+  __map_tag_groups:
+    family:
+      type: string
+      default_value: "tag36h11"
+      description: "AprilTag family used for this group."
+      validation:
+        one_of<>: [["tag16h5",
+                    "tag25h9",
+                    "tag36h10",
+                    "tag36h11",
+                    "tagCircle21h7",
+                    "tagCircle49h12",
+                    "tagCustom48h12",
+                    "tagStandard41h12",
+                    "tagStandard52h13"]]
+
+    id_begin:
+      type: int
+      default_value: 0
+      description: "First tag ID belonging to this group (inclusive)."
+      validation:
+        gt_eq<>: 0
+
+    id_end:
+      type: int
+      default_value: 0
+      description: "Last tag ID belonging to this group (inclusive). Must be >= id_begin."
+      validation:
+        gt_eq<>: 0
+
+    size:
+      type: double
+      default_value: 0.05
+      description: "Physical side length (meters) of every tag in this group."
+      validation:
+        gt<>: 0.0
+
+    tag_frame_prefix:
+      type: string
+      default_value: ""
+      description: >
+        Per-group override for the TF child-frame prefix. When empty
+        (default) the global tag_frame_prefix is used instead. Allows
+        groups to publish under distinct namespaces (e.g. stag_ vs
+        dock_) while sharing the same detector instance.
+
+  # ── Pose estimation ──────────────────────────────────────────────────
+  pose_method:
+    type: string
+    default_value: "orthogonal_iteration"
+    description: >
+      Tag→camera pose solver.
+      'orthogonal_iteration' — apriltag estimate_tag_pose (Lu/Hager/Mjolsness
+         orthogonal iteration). README-recommended default.
+      'homography'           — apriltag estimate_pose_for_tag_homography
+         (single-shot from the homography decomposition).
+      'ippe_square'          — cv::SOLVEPNP_IPPE_SQUARE: analytical 4-point
+         solver tailored to planar square markers.
+      'iterative'            — cv::SOLVEPNP_ITERATIVE: Levenberg-Marquardt
+         PnP refinement.
+    validation:
+      one_of<>: [["orthogonal_iteration",
+                  "homography",
+                  "ippe_square",
+                  "iterative"]]
+
+  decision_margin_min:
+    type: double
+    default_value: 0.0
+    description: >
+      Drop detections whose decision_margin falls below this threshold.
+      Useful for rejecting low-quality decodes (false positives) on small
+      or distant tags. 0 disables the filter.
+    validation:
+      gt_eq<>: 0.0
+
+  # ── TF broadcasting ──────────────────────────────────────────────────
+  publish_tf:
+    type: bool
+    default_value: true
+    description: >
+      Broadcast a TF for every detected tag (parent = image header.frame_id,
+      child = <tag_frame_prefix><id>). Skipped per-detection if its pose
+      solver failed.
+
+  tag_frame_prefix:
+    type: string
+    default_value: "tag_"
+    description: >
+      Default prefix for the per-tag TF child frame id (e.g. tag_5).
+      Used when a group does not set its own `tag_frame_prefix`.
