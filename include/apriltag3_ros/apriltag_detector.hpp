@@ -29,6 +29,11 @@ private:
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr & camera_info);
 
+  // Applies the runtime-tunable parameters (detection_rate, pose_method,
+  // decision_margin_min). Registered with the param listener and invoked
+  // from the on-set-parameters callback whenever one of them changes.
+  void onParametersUpdate(const apriltag3_ros::Params & params);
+
   std::shared_ptr<apriltag3_ros::ParamListener> param_listener_;
   apriltag3_ros::Params params_;
 
@@ -36,6 +41,16 @@ private:
 
   image_transport::CameraSubscriber camera_sub_;
   bool info_validated_ = false;
+
+  // Detection-rate throttle. detection_period_ <= 0 disables it (process
+  // every frame). Otherwise a frame is dropped unless at least
+  // detection_period_ seconds (node clock) have elapsed since the last one
+  // that was processed. Recomputed by onParametersUpdate when detection_rate
+  // changes; read by onImage. Both run in the node's default (mutually
+  // exclusive) callback group, so they never overlap and need no lock.
+  double detection_period_ = 0.0;
+  rclcpp::Time last_detection_time_;
+  bool have_last_detection_ = false;
 
   rclcpp::Publisher<apriltag3_msgs::msg::AprilTagDetectionArray>::SharedPtr
     detection_pub_;

@@ -23,11 +23,32 @@ apriltag3_ros:
     validation:
       not_empty<>: null
 
+  # ── Processing rate ──────────────────────────────────────────────────
+  # Dynamically reconfigurable at runtime via `ros2 param set`.
+  detection_rate:
+    type: double
+    default_value: 0.0
+    description: >
+      Upper bound on detection frequency in Hz (frame throttle). The node
+      still subscribes to every image, but runs detection + pose estimation
+      at most this often, always on the most recent frame; frames that
+      arrive too soon are dropped. The effective rate is therefore
+      min(camera_fps, detection_rate). Timing uses the node clock, so it
+      respects use_sim_time. 0 (default) disables throttling and processes
+      every received frame, preserving the original behavior.
+      Dynamically reconfigurable at runtime.
+    validation:
+      gt_eq<>: 0.0
+
   # ── Detector tunables (apriltag_detector_t direct fields) ────────────
+  # Read-only: applied once at construction. Changing these requires
+  # rebuilding the underlying apriltag_detector_t, so they are fixed at
+  # startup (set them via the params YAML / launch arguments).
   nthreads:
     type: int
     default_value: 1
     description: "Number of worker threads used by the detector."
+    read_only: true
     validation:
       gt_eq<>: 1
 
@@ -38,6 +59,7 @@ apriltag3_ros:
       Decimate input image by this factor before quad detection. Higher =
       faster but may miss small/distant tags. Decoding still uses full
       resolution.
+    read_only: true
     validation:
       gt_eq<>: 1.0
 
@@ -47,24 +69,29 @@ apriltag3_ros:
     description: >
       Gaussian blur sigma (px) applied to the segmentation image. ~0.8
       helps on noisy inputs.
+    read_only: true
 
   refine_edges:
     type: bool
     default_value: true
     description: >
       Snap quad edges to strong gradients. Ignored when quad_decimate == 1.
+    read_only: true
 
   decode_sharpening:
     type: double
     default_value: 0.25
     description: "Sharpening applied to the decoded image. Helps small tags."
+    read_only: true
 
   # ── Quad threshold parameters (apriltag_detector_t::qtp) ─────────────
+  # Read-only: part of the detector configuration fixed at construction.
   qtp:
     min_cluster_pixels:
       type: int
       default_value: 5
       description: "Reject quads with fewer than this many pixels."
+      read_only: true
       validation:
         gt_eq<>: 1
 
@@ -72,6 +99,7 @@ apriltag3_ros:
       type: int
       default_value: 10
       description: "Max corner candidates per pixel cluster."
+      read_only: true
       validation:
         gt_eq<>: 1
 
@@ -81,6 +109,7 @@ apriltag3_ros:
       description: >
         Reject edge pairs whose angle is within this (radians) of straight
         or 180°. 0 disables the check. Default is 10°.
+      read_only: true
       validation:
         gt_eq<>: 0.0
 
@@ -88,6 +117,7 @@ apriltag3_ros:
       type: double
       default_value: 10.0
       description: "Max MSE allowed when fitting lines to contours."
+      read_only: true
       validation:
         gt_eq<>: 0.0
 
@@ -95,6 +125,7 @@ apriltag3_ros:
       type: int
       default_value: 5
       description: "Minimum white-vs-black brightness gap (0-255)."
+      read_only: true
       validation:
         bounds<>: [0, 255]
 
@@ -104,6 +135,7 @@ apriltag3_ros:
       description: >
         Deglitch the thresholded image. Useful only on very noisy inputs;
         slows detection.
+      read_only: true
 
   # ── Family / max hamming ─────────────────────────────────────────────
   max_hamming:
@@ -113,6 +145,7 @@ apriltag3_ros:
       Maximum Hamming error bits corrected during decode. Library hard
       limit is 2 (apriltag.h); larger values explode memory and false
       positive rates.
+    read_only: true
     validation:
       bounds<>: [0, 2]
 
@@ -128,11 +161,14 @@ apriltag3_ros:
       configure <g>.family, <g>.id_begin, <g>.id_end, <g>.size.
     read_only: true
 
+  # Read-only: groups (and their per-group fields) are resolved into the
+  # detector's family table at construction and fixed for the node lifetime.
   __map_tag_groups:
     family:
       type: string
       default_value: "tag36h11"
       description: "AprilTag family used for this group."
+      read_only: true
       validation:
         one_of<>: [["tag16h5",
                     "tag25h9",
@@ -148,6 +184,7 @@ apriltag3_ros:
       type: int
       default_value: 0
       description: "First tag ID belonging to this group (inclusive)."
+      read_only: true
       validation:
         gt_eq<>: 0
 
@@ -155,6 +192,7 @@ apriltag3_ros:
       type: int
       default_value: 0
       description: "Last tag ID belonging to this group (inclusive). Must be >= id_begin."
+      read_only: true
       validation:
         gt_eq<>: 0
 
@@ -162,6 +200,7 @@ apriltag3_ros:
       type: double
       default_value: 0.05
       description: "Physical side length (meters) of every tag in this group."
+      read_only: true
       validation:
         gt<>: 0.0
 
@@ -173,8 +212,10 @@ apriltag3_ros:
         (default) the global tag_frame_prefix is used instead. Allows
         groups to publish under distinct namespaces (e.g. stag_ vs
         dock_) while sharing the same detector instance.
+      read_only: true
 
   # ── Pose estimation ──────────────────────────────────────────────────
+  # Dynamically reconfigurable at runtime via `ros2 param set`.
   pose_method:
     type: string
     default_value: "orthogonal_iteration"
@@ -188,12 +229,14 @@ apriltag3_ros:
          solver tailored to planar square markers.
       'iterative'            — cv::SOLVEPNP_ITERATIVE: Levenberg-Marquardt
          PnP refinement.
+      Dynamically reconfigurable at runtime.
     validation:
       one_of<>: [["orthogonal_iteration",
                   "homography",
                   "ippe_square",
                   "iterative"]]
 
+  # Dynamically reconfigurable at runtime via `ros2 param set`.
   decision_margin_min:
     type: double
     default_value: 0.0
@@ -201,10 +244,12 @@ apriltag3_ros:
       Drop detections whose decision_margin falls below this threshold.
       Useful for rejecting low-quality decodes (false positives) on small
       or distant tags. 0 disables the filter.
+      Dynamically reconfigurable at runtime.
     validation:
       gt_eq<>: 0.0
 
   # ── TF broadcasting ──────────────────────────────────────────────────
+  # Read-only: the TF broadcaster is created (or not) once at construction.
   publish_tf:
     type: bool
     default_value: true
@@ -212,6 +257,7 @@ apriltag3_ros:
       Broadcast a TF for every detected tag (parent = image header.frame_id,
       child = <tag_frame_prefix><id>). Skipped per-detection if its pose
       solver failed.
+    read_only: true
 
   tag_frame_prefix:
     type: string
@@ -219,3 +265,4 @@ apriltag3_ros:
     description: >
       Default prefix for the per-tag TF child frame id (e.g. tag_5).
       Used when a group does not set its own `tag_frame_prefix`.
+    read_only: true

@@ -52,12 +52,15 @@ Input must be rectified: the node uses `CameraInfo.P` (fx, fy, cx, cy) and treat
 
 All parameters are declared via `generate_parameter_library` from `src/apriltag_detector_parameters.yaml`. See that file for full validation rules and defaults.
 
+> **Dynamic vs. read-only.** Only `detection_rate`, `pose_method`, and `decision_margin_min` are reconfigurable at runtime via `ros2 param set`; they are applied immediately through an on-set parameter callback (no image required). Every other parameter is **read-only**: it is applied once at construction and `ros2 param set` is rejected, because changing it would require rebuilding the detector / its tag families, the subscription, or the TF broadcaster. Set those via the params YAML or launch arguments.
+
 ### I/O
 
 | Name             | Type   | Default       | Notes |
 |------------------|--------|---------------|-------|
 | `image_topic`    | string | `image_rect`  | Read-only. Base topic for `image_transport`. |
 | `image_transport`| string | `raw`         | Read-only. Transport plugin (`raw`, `compressed`, ...). |
+| `detection_rate` | double | `0.0`         | **Dynamic.** Upper bound on detection frequency (Hz). Throttles to the most recent frame; effective rate is `min(camera_fps, detection_rate)`. `0` = every frame. Uses the node clock (respects `use_sim_time`). |
 
 ### Detector
 
@@ -75,13 +78,13 @@ All parameters are declared via `generate_parameter_library` from `src/apriltag_
 | `qtp.min_white_black_diff`    | int    | `5`         | 0..255. |
 | `qtp.deglitch`                | bool   | `false`     | |
 | `max_hamming`                 | int    | `0`         | 0..2; library hard cap. |
-| `decision_margin_min`         | double | `0.0`       | Drops low-confidence decodes. `0` disables. |
+| `decision_margin_min`         | double | `0.0`       | **Dynamic.** Drops low-confidence decodes. `0` disables. |
 
 ### Pose estimation
 
 | Name          | Type   | Default                  | Notes |
 |---------------|--------|--------------------------|-------|
-| `pose_method` | string | `orthogonal_iteration`   | One of `orthogonal_iteration`, `homography`, `ippe_square`, `iterative`. |
+| `pose_method` | string | `orthogonal_iteration`   | **Dynamic.** One of `orthogonal_iteration`, `homography`, `ippe_square`, `iterative`. |
 
 Pose error semantics depend on the solver:
 
