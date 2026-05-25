@@ -12,6 +12,12 @@ apriltag_detector:
     image_topic: image_rect
     image_transport: raw
 
+    # ── Processing rate ──────────────────────────────────────────────
+    # Cap detection/pose estimation at this many Hz, always on the most
+    # recent frame (frames arriving sooner are dropped). Effective rate is
+    # min(camera_fps, detection_rate). 0 = process every received frame.
+    detection_rate: 0.0
+
     # ── Detector tunables (apriltag_detector_t direct fields) ────────
     nthreads: 2
     quad_decimate: 2.0       # >1 = faster, may miss small/distant tags

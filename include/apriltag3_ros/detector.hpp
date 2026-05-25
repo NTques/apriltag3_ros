@@ -70,6 +70,11 @@ public:
     const sensor_msgs::msg::Image::ConstSharedPtr & image,
     const sensor_msgs::msg::CameraInfo::ConstSharedPtr & camera_info);
 
+  // Apply the subset of parameters that are safe to change at runtime
+  // (pose_method, decision_margin_min) without rebuilding the underlying
+  // apriltag_detector_t or its tag families.
+  void updateRuntimeParams(const apriltag3_ros::Params & params);
+
 private:
   struct Group
   {

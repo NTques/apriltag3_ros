@@ -52,12 +52,15 @@ ros2 launch apriltag3_ros apriltag_detector.launch.py \
 
 모든 파라미터는 `src/apriltag_detector_parameters.yaml`로부터 `generate_parameter_library`가 선언합니다. 유효성 검증 규칙과 전체 기본값은 해당 파일을 참조하세요.
 
+> **동적 vs. read-only.** 런타임에 `ros2 param set`으로 바꿀 수 있는 것은 `detection_rate`, `pose_method`, `decision_margin_min` 셋뿐입니다. on-set 파라미터 콜백으로 즉시 반영됩니다(이미지 수신과 무관). 나머지는 전부 **read-only**로, 생성자에서 한 번만 적용되고 `ros2 param set`은 거부됩니다. 이들은 변경하려면 디텍터/태그 패밀리, 구독, 또는 TF 브로드캐스터를 다시 만들어야 하기 때문입니다. 해당 값들은 params YAML이나 런치 인자로 지정하세요.
+
 ### I/O
 
 | 이름             | 타입   | 기본값        | 비고 |
 |------------------|--------|---------------|------|
 | `image_topic`    | string | `image_rect`  | read-only. `image_transport` 베이스 토픽. |
 | `image_transport`| string | `raw`         | read-only. 전송 플러그인 (`raw`, `compressed`, ...). |
+| `detection_rate` | double | `0.0`         | **동적.** 검출 주기 상한(Hz). 가장 최근 프레임만 처리하도록 스로틀링하며, 실제 처리율은 `min(카메라 FPS, detection_rate)`. `0`이면 매 프레임 처리. 노드 클럭 사용(`use_sim_time` 반영). |
 
 ### 디텍터
 
@@ -75,13 +78,13 @@ ros2 launch apriltag3_ros apriltag_detector.launch.py \
 | `qtp.min_white_black_diff`    | int    | `5`          | 0..255. |
 | `qtp.deglitch`                | bool   | `false`      | |
 | `max_hamming`                 | int    | `0`          | 0..2 (라이브러리 한도). |
-| `decision_margin_min`         | double | `0.0`        | 낮은 신뢰도 디코드 제거. `0`이면 비활성화. |
+| `decision_margin_min`         | double | `0.0`        | **동적.** 낮은 신뢰도 디코드 제거. `0`이면 비활성화. |
 
 ### 자세 추정
 
 | 이름          | 타입   | 기본값                  | 비고 |
 |---------------|--------|-------------------------|------|
-| `pose_method` | string | `orthogonal_iteration`  | `orthogonal_iteration`, `homography`, `ippe_square`, `iterative` 중 하나. |
+| `pose_method` | string | `orthogonal_iteration`  | **동적.** `orthogonal_iteration`, `homography`, `ippe_square`, `iterative` 중 하나. |
 
 `pose_error`의 의미는 솔버에 따라 다릅니다.
 

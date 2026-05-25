@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 
 #include <geometry_msgs/msg/quaternion.hpp>
@@ -85,6 +86,10 @@ AprilTagDetector::AprilTagDetector(const rclcpp::NodeOptions & options)
 
   detector_ = std::make_unique<Detector>(params_);
 
+  if (params_.detection_rate > 0.0) {
+    detection_period_ = 1.0 / params_.detection_rate;
+  }
+
   detection_pub_ = create_publisher<apriltag3_msgs::msg::AprilTagDetectionArray>(
     "detections", rclcpp::SensorDataQoS());
 
@@ -103,21 +108,68 @@ AprilTagDetector::AprilTagDetector(const rclcpp::NodeOptions & options)
   const std::string resolved_info_topic =
     image_transport::getCameraInfoTopic(camera_sub_.getTopic());
 
+  char rate_buf[32];
+  if (detection_period_ > 0.0) {
+    std::snprintf(rate_buf, sizeof(rate_buf), "%.3g Hz", params_.detection_rate);
+  } else {
+    std::snprintf(rate_buf, sizeof(rate_buf), "every frame");
+  }
+
   RCLCPP_INFO(
     get_logger(),
     "AprilTagDetector ready: image='%s', camera_info='%s', groups=%zu, "
-    "pose_method='%s', publish_tf=%s",
+    "pose_method='%s', publish_tf=%s, detection_rate=%s",
     camera_sub_.getTopic().c_str(), resolved_info_topic.c_str(),
     params_.tag_groups.size(), params_.pose_method.c_str(),
-    params_.publish_tf ? "true" : "false");
+    params_.publish_tf ? "true" : "false", rate_buf);
+
+  // React to runtime changes of the writable parameters (detection_rate,
+  // pose_method, decision_margin_min) event-driven, instead of polling in
+  // onImage. Registered last so the dynamic tag-group map parameters
+  // declared during construction don't trigger spurious startup updates;
+  // only genuine post-construction `set` calls reach onParametersUpdate.
+  // The callback runs from the on-set-parameters callback, serialized with
+  // onImage via the node's default (mutually exclusive) callback group.
+  param_listener_->setUserCallback(
+    [this](const apriltag3_ros::Params & params) {onParametersUpdate(params);});
 }
 
 AprilTagDetector::~AprilTagDetector() = default;
+
+void AprilTagDetector::onParametersUpdate(const apriltag3_ros::Params & params)
+{
+  params_ = params;
+  detection_period_ =
+    params_.detection_rate > 0.0 ? 1.0 / params_.detection_rate : 0.0;
+  detector_->updateRuntimeParams(params_);
+  RCLCPP_INFO(
+    get_logger(),
+    "Runtime params updated: detection_rate=%.3g Hz, pose_method='%s', "
+    "decision_margin_min=%.3g",
+    params_.detection_rate, params_.pose_method.c_str(),
+    params_.decision_margin_min);
+}
 
 void AprilTagDetector::onImage(
   const sensor_msgs::msg::Image::ConstSharedPtr & image,
   const sensor_msgs::msg::CameraInfo::ConstSharedPtr & camera_info)
 {
+  // Frame throttle: when a detection rate is configured, drop frames that
+  // arrive sooner than detection_period_ since the last processed one. A
+  // negative elapsed (clock jumped backwards, e.g. a bag loop) is treated
+  // as "process now" so the throttle can never wedge.
+  if (detection_period_ > 0.0) {
+    const rclcpp::Time now = this->now();
+    if (have_last_detection_) {
+      const double elapsed = (now - last_detection_time_).seconds();
+      if (elapsed >= 0.0 && elapsed < detection_period_) {
+        return;
+      }
+    }
+    last_detection_time_ = now;
+    have_last_detection_ = true;
+  }
+
   if (!info_validated_) {
     info_validated_ = true;
     // P[0]/P[5] are fx/fy of the rectified projection. Zero means the

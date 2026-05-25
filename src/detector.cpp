@@ -306,6 +306,12 @@ Detector::~Detector()
   families_.clear();
 }
 
+void Detector::updateRuntimeParams(const apriltag3_ros::Params & params)
+{
+  pose_method_ = params.pose_method;
+  decision_margin_min_ = params.decision_margin_min;
+}
+
 const Detector::Group * Detector::findGroup(
   const std::string & family, int id) const
 {
